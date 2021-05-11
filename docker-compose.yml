@@ -1,10 +1,16 @@
-version: '3'
+version: "3"
 services:
   web:
+    container_name: chiametry-web
     build: .
     ports:
-     - "5000:5000"
+      - "5000:5000"
     volumes:
-     - .:/code
+      - .:/code
+      - ${PLOT_LOGS_ROOT}:/logs
   redis:
+    container_name: chiametry-redis
     image: "redis:alpine"
+    volumes:
+      - ${PLOT_LOGS_ROOT}:/logs
+      - ./data:/data
