@@ -12,9 +12,9 @@ from inspect import currentframe, getframeinfo
 from utils import bcolors
 import os
 
-frameinfo = getframeinfo(currentframe())
+import time
 
-#app = Flask(__name__)
+frameinfo = getframeinfo(currentframe())
 
 
 pretty_printer = pprint.PrettyPrinter(indent=4)
@@ -41,32 +41,25 @@ args = parser.parse_args()
 # https://stackoverflow.com/questions/25745053/about-char-b-prefix-in-python3-4-1-client-connect-to-redis
 redis = Redis(host='redis', port=6379, charset="utf-8", decode_responses=True)
 
-if args.flushall_before_ingest:
-
-    print(bcolors.HEADER + bcolors.FAIL +
-          'flushing all Redis entries...' + bcolors.ENDC)
-    redis.flushall()
-
 
 # aka, this is the closest to "ingest" for now
 
 # This ingests and adds to redis.
 
 
-known_plot_ids = redis.smembers('plot_ids')
-# known_plot_ids = list(map(str, known_plot_ids))
-# pp(known_plot_ids)
-# print('wee')
-# quit()
+if args.flushall_before_ingest:
+    print(bcolors.HEADER + bcolors.FAIL +
+          'flushing all Redis entries...' + bcolors.ENDC)
+    redis.flushall()
 
+known_plot_ids = redis.smembers('set::plot_ids')
 
 # can't decide which handler I like more.
-
 # the first handler immediately begins processing everything.
-
 # the alternate handler at least puts things into an array/list first so that I can troubleshoot
 # by temporarily shrinking the size of the array
 #
+
 
 def ingest_one_file(payload):
     # print(payload)
@@ -86,22 +79,92 @@ def ingest_one_file(payload):
         # pp(['meta', meta])
         # pp(['tractor', tractor, 'seq', seq, 'plot_id', meta['plot_id']])
 
-        if meta['plot_id'] in known_plot_ids:
-            print('already have it. skipping plot: ' + meta['plot_id'])
+        long_plot_id_hash = meta['plot_id']
+
+        if long_plot_id_hash in known_plot_ids:
+            print('already have it. skipping plot: ' + long_plot_id_hash)
             return False
 
         print('ingesting plot '
               + bcolors.OKGREEN
-              + meta['plot_id']
+              + long_plot_id_hash
               + bcolors.ENDC
               + ' (' + full_filename + ')'
               )
-        # pp(['adding...'])
-        pp(meta)
-        redis.sadd('tractor_ids', tractor)
-        redis.sadd('plot_ids', meta['plot_id'])
+
+        # NOW FOR THE REDIS
+
+        # NOTE: I am trying a bunch of different redis schema things
+        # here. I am unsure what I want until I gain some more experience.
+        # You might need a change of clothes and a brisk walk after reading this code.
+
+        # I am prefixing things, for now, with set:: list:: and sorted_set:: just to
+        # keep things straight as I learn. I probably don't want to continue doing this
+        # for too much longer, but it's a helpful aide for me as I learn.
+
+        # I think I would rather have a lookup list for the plot hash IDs
+        # rather than having to carry the long plot hash everywhere in the schema
+
+        # in contrast to sets (sadd & smembers), lists have the advantage that I can
+        # refer to long plot ID hashes by the index by which they were added to the list, instead
+        # of having to carry the plot hash everywhere. This requires being
+        # organized, disciplined about how they're referred to in other lists, sets
+        # because it's another level of indirection
+
+        # these are easy numbers/strings. fine being a set, I think
+        # I could have also just made them an rpush list, but we don't always use every number,
+        # so I'll just keep the numbers in this set 1:1 with their tractor ID
+        redis.sadd('set::tractor_ids', tractor)
+
+        # IMPORTANT. this list::plot_ids will be a lookup table for the real plot hashes
+        length = redis.rpush('list::plot_ids', long_plot_id_hash)
+        plot_index = length - 1  # make zero-based so that LINDEX works
+        #plot_index = str(plot_index)
+
+        meta['plot_index'] = plot_index
+
+        # so plot_id hash => plot_index lookups are possible
+        redis.hset('hash::plot_index_by_plot_id',
+                   long_plot_id_hash, plot_index)
+
+        # I'm making a distinction between plot index and plot ID. By ID, I always mean
+        # the longer hash like 547bef5aa3ce9f5806bfe67849efc7a625949ea860261dc50c8bda43a018fdd8
+        # plot index is its 0-based index in the list::plot_ids list
+
+        # the set of long "hash" plot ids for this tractor
+        redis.sadd('set::tractor:' + str(tractor) +
+                   ':plot_ids', long_plot_id_hash)
+
+        # the global set of long hash plot ids
+        redis.sadd('set::plot_ids', long_plot_id_hash)
+
+        # the global count of plots, duh
         redis.incr('plot_count')
-        redis.hmset('plot:' + meta['plot_id'], meta)
+
+        pp(meta)
+
+        # the plot metadata, keyed by its *list index*, returned from an earlier *rpush*
+        #  onto the 'list::plot_ids' list
+        redis.hmset('plot:' + str(plot_index), meta)
+
+        # COPY TIME
+        tmp_dict = {}
+        # tmp_dict's key is the plot index, value is the score per redis-py zadd rules
+        #
+        # default to infinite copy_time to sort longer than any other copy time
+        tmp_dict[plot_index] = '+inf'
+        if meta['copy_time'] != 'NA':
+            tmp_dict[plot_index] = meta['copy_time']
+
+        redis.zadd('sorted_set::copy_time:', tmp_dict)
+
+        # TOTAL TIME
+        tmp_dict = {}
+        tmp_dict[plot_index] = '+inf'
+        if meta['total_time'] != 'NA':
+            tmp_dict[plot_index] = meta['total_time']
+
+        redis.zadd('sorted_set::total_time:', tmp_dict)
 
 
 def ingest_plot_logs():
@@ -125,15 +188,13 @@ def ingest_plot_logs():
               frameinfo.filename, ' at line', frameinfo.lineno, ')'
               + bcolors.ENDC)
 
-        files = files[0:100]
-    #pp(['files', files])
+        #files = files[0:100]
+        files = files[0:5]
+        #pp(['files', files])
 
     for file in files:
         #pp(['file loop:', file])
         ingest_one_file(file)
 
-
-#
-#  FLUSH!!
 
 ingest_plot_logs()

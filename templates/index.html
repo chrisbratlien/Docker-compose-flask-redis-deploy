@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="{{ url_for('static', filename='flex.css') }}">
+</head>
+<body>
+  <div class="flex-row align-items-center space-between">
+    <div class="">one</div>
+    <div class="">two</div>
+    <div class="">three</div>
+  </div>
+  <script>
+
+    function bootup() {
+
+    }
+
+    async function getPlots() {
+      let result = await fetch('/api/plot_ids')
+      .then(response => response.json())
+      return result;
+    }
+  
+    x = getPlots()
+    console.log('plots',x);
+
+
+  </script>
+</body>

@@ -1,7 +1,6 @@
 import datetime
 import pprint
-from flask import Flask
-from flask import jsonify
+from flask import Flask, jsonify, render_template
 
 from redis import Redis
 import re
@@ -22,8 +21,12 @@ redis = Redis(host='redis', port=6379, charset="utf-8", decode_responses=True)
 
 @app.route('/')
 def hello():
-    count = redis.incr('hits')
-    return 'Hello from Docker! I have been seen {} times.\n'.format(count)
+    #count = redis.incr('hits')
+    # return 'Hello from Docker! I have been seen {} times.\n'.format(count)
+    return render_template("index.html")
+
+
+# NOTE: lots of schema changes happening in ingest_plot_logs.py that may break these endpoints
 
 
 @app.route('/api/tractor_ids')
@@ -35,13 +38,27 @@ def show_tractors():
 
 @app.route('/api/plot_ids')
 def show_plot_ids():
-    ids = list(redis.smembers('plot_ids'))
+    ids = list(redis.smembers('set::plot_ids'))
     return jsonify(list(ids))
 
 
-@app.route('/api/plot/<id>')
-def show_plot(id):
-    result = redis.hgetall('plot:' + id)
+@app.route('/api/plot/<plot_id>')
+def show_plot(plot_id):
+
+    # first convert the plot_id to a plot_index
+    plot_index = redis.hget('hash::plot_index_by_plot_id', plot_id)
+
+    # return jsonify(idx)
+
+    result = redis.hgetall('plot:' + plot_index)
+    # did I gain anything by doing this indirection?
+    # Hopefully yes. later set intersections, scorings, sortings, etc will use the smaller plot_index
+    # membership
+
+    # but the downside is that this lookup is now a 2-step lookup
+    # 1. plot_id -> plot_index
+    # 2. plot_index => the plot metadata
+
     return jsonify(result)
 
 

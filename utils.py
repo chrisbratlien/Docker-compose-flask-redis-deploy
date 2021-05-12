@@ -202,6 +202,9 @@ def parse_plot_log(lines):
     # pp(['** >> p3', p3])
     # pp(['** >> p4', p4])
 
+    # unsure whether to keep this nested or flat for redis.
+    # as-is, phase1 (p1) through phase4 (p4) would make it structured
+
     result = {
         "plot_id": plot_id,
         # "phase1": p1,
