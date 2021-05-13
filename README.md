@@ -27,19 +27,22 @@ $ docker-compose up
 2. connect interactively to running container
 
 ```
-docker exec -it <container> /bin/sh
+ docker exec -it chiametry-web /bin/sh
 ```
 
 3. run ingestion script
 
 ```
+/code # python ingest_plot_logs.py -h
 usage: ingest_plot_logs.py [-h] [--flushall-before-ingest] [--small-sample]
+                           [--verbose]
 
 optional arguments:
   -h, --help            show this help message and exit
   --flushall-before-ingest
                         flush Redis DB
-  --small-sample        only ingest a few random plots (for debugging)
+  --small-sample        only ingest a few random plot logs (for debugging)
+  --verbose             show more feedback
 ```
 
 ```

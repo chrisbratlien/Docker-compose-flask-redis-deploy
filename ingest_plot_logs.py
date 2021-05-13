@@ -70,8 +70,7 @@ def ingest_plot_logs(opts):
     utils.walker(basepath, only_plot_log_handler)
 
     if args.small_sample:
-        print(bcolors.WARNING + 'NOTE: using a small sample..(',
-              frameinfo.filename, ' at line', frameinfo.lineno, ')'
+        print(bcolors.WARNING + 'only ingesting a small sample.'
               + bcolors.ENDC)
         # grab a few files at random
         random.shuffle(files)
