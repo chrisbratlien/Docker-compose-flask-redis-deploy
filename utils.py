@@ -43,6 +43,10 @@ class AppContext:
     known_plot_ids = redis.smembers('set::plot_ids')
     verbose = False
 
+    def flushall(self):
+        self.redis.flushall()
+        self.known_plot_ids = []
+
 
 def find(f, seq):
     """Return first item in sequence where f(item) == True."""
@@ -293,7 +297,7 @@ def ingest_one_file(full_filename, ctx):
     long_plot_id_hash = meta['plot_id']
 
     if long_plot_id_hash in known_plot_ids:
-        print( 'already have it. skipping plot: ' + bcolors.WARNING +
+        print('already have it. skipping plot: ' + bcolors.WARNING +
               long_plot_id_hash + bcolors.ENDC)
         return False
 

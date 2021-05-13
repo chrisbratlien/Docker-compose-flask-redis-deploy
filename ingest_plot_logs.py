@@ -42,7 +42,7 @@ if args.verbose:
 if args.flushall_before_ingest:
     print(bcolors.HEADER + bcolors.FAIL +
           'flushing all Redis entries...' + bcolors.ENDC)
-    redis.flushall()
+    ctx.flushall()
 
 
 # Ingesting vs Parsing: ingesting goes a step beyond parsing by
