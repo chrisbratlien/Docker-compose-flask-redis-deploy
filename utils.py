@@ -2,6 +2,9 @@ import re
 import pprint
 import datetime
 import os
+
+from redis import Redis
+
 pretty_printer = pprint.PrettyPrinter(indent=4)
 pp = pretty_printer.pprint
 
@@ -23,6 +26,20 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+class AppContext:
+    # NOTE: charset="utf-8", decode_responses=True is used to
+    # auto convert responses from byte strings to utf-8 strings
+    # b'ffa122b1c454225fc33ae72bdf8a5e29e6a0cdee94b25752e33bef04a12aff6a' =>
+    # 'ffa122b1c454225fc33ae72bdf8a5e29e6a0cdee94b25752e33bef04a12aff6a'
+
+    # https://stackoverflow.com/questions/25745053/about-char-b-prefix-in-python3-4-1-client-connect-to-redis
+    # redis = Redis(host='redis', port=6379, charset="utf-8", decode_responses=True)
+
+    redis = Redis(host='redis', port=6379,
+                  charset="utf-8", decode_responses=True)
+    known_plot_ids = redis.smembers('set::plot_ids')
 
 
 def find(f, seq):
@@ -79,7 +96,7 @@ def parse_plot_log(lines):
     p4 = phase_template.copy()
 
     # other ways to find lines:
-    #phase_hits = filter(lambda line: re.search('phase', line), lines)
+    # phase_hits = filter(lambda line: re.search('phase', line), lines)
     # pp(['phase_hits', phase_hits])
     # phase1_begin = filter(lambda line: re.search(
     #    'Starting phase 1/4', line), lines)
@@ -158,7 +175,7 @@ def parse_plot_log(lines):
     if p3_end_str:
         details = parse_time_for_phase_line(p3_end_str)
 
-        #pp(['p3 details', details])
+        # pp(['p3 details', details])
 
         p3['when_ended'] = details['when_datetime_obj']
         p3['when_ended_unixformat'] = details['when_unixformat']
@@ -241,9 +258,120 @@ def walker(basepath, callback):
     """recursively walk basepath and trigger callback on all files found"""
     for entry in os.listdir(basepath):
         joined = os.path.join(basepath, entry)
-        #pp(['file entry', entry, 'joined', joined])
+        # pp(['file entry', entry, 'joined', joined])
         if os.path.isfile(joined):
             callback(joined)
         if os.path.isdir(joined):
             # print('RECURSE')
             walker(joined, callback)
+
+
+def ingest_one_file(full_filename, ctx):
+    known_plot_ids = ctx.known_plot_ids
+    redis = ctx.redis
+
+    if not re.search(r'\d+.log', full_filename):
+        print(bcolors.RED + 'skipping unrecognized file: ' +
+              full_filename + bcolors.ENDC)
+        return False
+
+    parts = re.findall(r'\d+', full_filename)
+    tractor = int(parts[0])
+    PID = int(parts[1])
+    meta = parse_plot_log_file(full_filename)
+
+    # add some extra key -> values not found within the log file content
+    meta.update({
+        'tractor_id': tractor,
+        'PID': PID
+    })
+
+    # pp(['meta', meta])
+
+    long_plot_id_hash = meta['plot_id']
+
+    if long_plot_id_hash in known_plot_ids:
+        print(bcolors.WARNING + 'already have it. skipping plot: ' +
+              long_plot_id_hash + bcolors.ENDC)
+        return False
+
+    print('ingesting plot '
+          + bcolors.OKGREEN
+          + long_plot_id_hash
+          + bcolors.ENDC
+          + ' (' + full_filename + ')'
+          )
+
+    # NOW FOR THE REDIS
+
+    # NOTE: I am trying a bunch of different redis schema things
+    # here. I am unsure what I want until I gain some more experience.
+    # You might need a change of clothes and a brisk walk after reading this code.
+
+    # I am prefixing things, for now, with set:: list:: and sorted_set:: just to
+    # keep things straight as I learn. I probably don't want to continue doing this
+    # for too much longer, but it's a helpful aide for me as I learn.
+
+    # I think I would rather have a lookup list for the plot hash IDs
+    # rather than having to carry the long plot hash everywhere in the schema
+
+    # in contrast to sets (sadd & smembers), lists have the advantage that I can
+    # refer to long plot ID hashes by the index by which they were added to the list, instead
+    # of having to carry the plot hash everywhere. This requires being
+    # organized, disciplined about how they're referred to in other lists, sets
+    # because it's another level of indirection
+
+    # these are easy numbers/strings. fine being a set, I think
+    # I could have also just made them an rpush list, but we don't always use every number,
+    # so I'll just keep the numbers in this set 1:1 with their tractor ID
+    redis.sadd('set::tractor_ids', tractor)
+
+    # IMPORTANT. this list::plot_ids will be a lookup table for the real plot hashes
+    length = redis.rpush('list::plot_ids', long_plot_id_hash)
+    plot_ingest_index = length - 1  # make zero-based so that LINDEX and LRANGE work
+
+    meta['plot_ingest_index'] = plot_ingest_index
+
+    # so plot_id hash => plot_ingest_index lookups are possible
+    redis.hset('hash::plot_ingest_index_by_plot_id',
+               long_plot_id_hash, plot_ingest_index)
+
+    # I'm making a distinction between plot index and plot ID. By ID, I always mean
+    # the longer hash like 547bef5aa3ce9f5806bfe67849efc7a625949ea860261dc50c8bda43a018fdd8
+    # plot index is its 0-based index in the list::plot_ids list
+
+    # the set of long "hash" plot ids for this tractor
+    redis.sadd('set::tractor:' + str(tractor) +
+               ':plot_ids', long_plot_id_hash)
+
+    # the global set of long hash plot ids
+    redis.sadd('set::plot_ids', long_plot_id_hash)
+
+    # the global count of plots, duh
+    redis.incr('plot_count')
+
+    pp(meta)
+
+    # the plot metadata, keyed by its *list index*, returned from an earlier *rpush*
+    #  onto the 'list::plot_ids' list
+    redis.hmset('hash::plot:' + str(plot_ingest_index), meta)
+
+    # COPY TIME
+    tmp_dict = {}
+    # tmp_dict's key is the plot index, value is the score per redis-py zadd rules
+    #
+    # default to infinite copy_time to sort longer than any other copy time
+    tmp_dict[plot_ingest_index] = '+inf'
+    if meta['copy_time'] != 'NA':
+        tmp_dict[plot_ingest_index] = round(meta['copy_time'])
+
+    redis.zadd('sorted_set::copy_time:', tmp_dict)
+
+    # TOTAL TIME
+    tmp_dict = {}
+    tmp_dict[plot_ingest_index] = '+inf'
+    if meta['total_time'] != 'NA':
+        tmp_dict[plot_ingest_index] = round(meta['total_time'])
+
+    # not enough, need to distinguish plots from tractors
+    redis.zadd('sorted_set::total_time:', tmp_dict)
