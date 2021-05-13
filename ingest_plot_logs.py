@@ -25,6 +25,9 @@ parser.add_argument("--flushall-before-ingest",
 parser.add_argument("--small-sample",
                     help="only ingest a few random plot logs (for debugging)", action="store_true")
 
+parser.add_argument("--verbose",
+                    help="show more feedback", action="store_true")
+
 
 args = parser.parse_args()
 # pp(args)
@@ -33,6 +36,11 @@ args = parser.parse_args()
 
 ctx = utils.AppContext()
 redis = ctx.redis
+
+if args.verbose:
+    ctx.verbose = True
+
+
 
 if args.flushall_before_ingest:
     print(bcolors.HEADER + bcolors.FAIL +

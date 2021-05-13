@@ -40,6 +40,7 @@ class AppContext:
     redis = Redis(host='redis', port=6379,
                   charset="utf-8", decode_responses=True)
     known_plot_ids = redis.smembers('set::plot_ids')
+    verbose = False
 
 
 def find(f, seq):
@@ -291,7 +292,7 @@ def ingest_one_file(full_filename, ctx):
     long_plot_id_hash = meta['plot_id']
 
     if long_plot_id_hash in known_plot_ids:
-        print(bcolors.WARNING + 'already have it. skipping plot: ' +
+        print( 'already have it. skipping plot: ' + bcolors.WARNING +
               long_plot_id_hash + bcolors.ENDC)
         return False
 
@@ -350,7 +351,8 @@ def ingest_one_file(full_filename, ctx):
     # the global count of plots, duh
     redis.incr('plot_count')
 
-    pp(meta)
+    if ctx.verbose:
+        pp(meta)
 
     # the plot metadata, keyed by its *list index*, returned from an earlier *rpush*
     #  onto the 'list::plot_ids' list
