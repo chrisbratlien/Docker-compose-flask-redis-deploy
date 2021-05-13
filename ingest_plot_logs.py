@@ -1,7 +1,7 @@
 import argparse
 import utils
 from redis import Redis
-
+import random
 import pprint
 
 from flask import Flask
@@ -26,7 +26,7 @@ parser.add_argument("--flushall-before-ingest",
                     help="flush Redis DB", action="store_true")
 
 parser.add_argument("--small-sample",
-                    help="only ingest 100 plots (debugging)", action="store_true")
+                    help="only ingest a few random plot logs (for debugging)", action="store_true")
 
 
 args = parser.parse_args()
@@ -67,17 +67,16 @@ def ingest_one_file(payload):
         full_filename = payload['joined']
         parts = re.findall(r'\d+', full_filename)
         tractor = int(parts[0])
-        seq = int(parts[1])
+        PID = int(parts[1])
         meta = utils.parse_plot_log_file(full_filename)
 
         # add some extra key -> values not found within the log file content
         meta.update({
             'tractor_id': tractor,
-            'seq': seq
+            'PID': PID
         })
 
         # pp(['meta', meta])
-        # pp(['tractor', tractor, 'seq', seq, 'plot_id', meta['plot_id']])
 
         long_plot_id_hash = meta['plot_id']
 
@@ -118,14 +117,13 @@ def ingest_one_file(payload):
 
         # IMPORTANT. this list::plot_ids will be a lookup table for the real plot hashes
         length = redis.rpush('list::plot_ids', long_plot_id_hash)
-        plot_index = length - 1  # make zero-based so that LINDEX works
-        #plot_index = str(plot_index)
+        plot_ingest_index = length - 1  # make zero-based so that LINDEX works
 
-        meta['plot_index'] = plot_index
+        meta['plot_ingest_index'] = plot_ingest_index
 
-        # so plot_id hash => plot_index lookups are possible
-        redis.hset('hash::plot_index_by_plot_id',
-                   long_plot_id_hash, plot_index)
+        # so plot_id hash => plot_ingest_index lookups are possible
+        redis.hset('hash::plot_ingest_index_by_plot_id',
+                   long_plot_id_hash, plot_ingest_index)
 
         # I'm making a distinction between plot index and plot ID. By ID, I always mean
         # the longer hash like 547bef5aa3ce9f5806bfe67849efc7a625949ea860261dc50c8bda43a018fdd8
@@ -145,25 +143,26 @@ def ingest_one_file(payload):
 
         # the plot metadata, keyed by its *list index*, returned from an earlier *rpush*
         #  onto the 'list::plot_ids' list
-        redis.hmset('plot:' + str(plot_index), meta)
+        redis.hmset('hash::plot:' + str(plot_ingest_index), meta)
 
         # COPY TIME
         tmp_dict = {}
         # tmp_dict's key is the plot index, value is the score per redis-py zadd rules
         #
         # default to infinite copy_time to sort longer than any other copy time
-        tmp_dict[plot_index] = '+inf'
+        tmp_dict[plot_ingest_index] = '+inf'
         if meta['copy_time'] != 'NA':
-            tmp_dict[plot_index] = meta['copy_time']
+            tmp_dict[plot_ingest_index] = round(meta['copy_time'])
 
         redis.zadd('sorted_set::copy_time:', tmp_dict)
 
         # TOTAL TIME
         tmp_dict = {}
-        tmp_dict[plot_index] = '+inf'
+        tmp_dict[plot_ingest_index] = '+inf'
         if meta['total_time'] != 'NA':
-            tmp_dict[plot_index] = meta['total_time']
+            tmp_dict[plot_ingest_index] = round(meta['total_time'])
 
+        # not enough, need to distinguish plots from tractors
         redis.zadd('sorted_set::total_time:', tmp_dict)
 
 
@@ -189,6 +188,7 @@ def ingest_plot_logs():
               + bcolors.ENDC)
 
         #files = files[0:100]
+        random.shuffle(files)
         files = files[0:5]
         #pp(['files', files])
 

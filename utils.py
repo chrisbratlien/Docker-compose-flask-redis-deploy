@@ -32,66 +32,51 @@ def find(f, seq):
             return item
 
 
+def get_when_block(when_orig_str):
+    result = {}
+    # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
+    # https://stackabuse.com/converting-strings-to-datetime-in-python/
+    # Sat May 8 10:32:56 2021 -> %a %b %d %H:%M:%S %Y
+    datetime_obj = datetime.datetime.strptime(
+        when_orig_str, '%a %b %d %H:%M:%S %Y')  # match the plot log file date format
+    result['when_datetime_obj'] = datetime_obj
+    result['when_isoformat'] = datetime_obj.isoformat()
+    result['when_unixformat'] = int(datetime_obj.timestamp())
+    result['when_str'] = when_orig_str
+    return result
+
+
 def parse_starting_phase_line(str):
     result = {}
     parts = str.split('...')
     when_orig_str = parts[1].strip()
-
-    # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
-    # https://stackabuse.com/converting-strings-to-datetime-in-python/
-
-    # Sat May 8 10:32:56 2021 -> %a %b %d %H:%M:%S %Y
-    date_time_obj = datetime.datetime.strptime(
-        when_orig_str, '%a %b %d %H:%M:%S %Y')  # match the plot log file date format
-
-    # get the phase number. NOTE: we may not need to do this. we may already know the phase before we call this helper
-    temp = re.findall(r'\d+', str)
-    numbers_found = list(map(int, temp))
-    phase_num = numbers_found[0]
-
-    # pp(['res', res])
-
-    result['when'] = date_time_obj
-    result['when_isoformat'] = date_time_obj.isoformat()
-    result['when_str'] = when_orig_str
-    result['phase_num'] = phase_num
-
+    result = get_when_block(when_orig_str)
     return result
 
 
 def parse_time_for_phase_line(str):
-    result = {}
-
     p = re.compile(r'CPU.*\)')
     parts = p.split(str)
     # pp(['parts', parts])
     when_orig_str = parts[1].strip()
-
-    # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
-    # Sat May 8 10:32:56 2021 -> %a %b %d %H:%M:%S %Y
-    date_time_obj = datetime.datetime.strptime(
-        when_orig_str, '%a %b %d %H:%M:%S %Y')  # match the log file date format
-
-    # get the phase number. NOTE: we may not need to do this. we may already know the phase before we call this helper
-    # temp = re.findall(r'\d+', str)
-    # numbers_found = list(map(int, temp))
-    # phase_num = numbers_found[0]
-
-    result['when'] = date_time_obj
-    result['when_isoformat'] = date_time_obj.isoformat()
-    result['when_str'] = when_orig_str
-    # result['phase_num'] = phase_num
-
+    result = get_when_block(when_orig_str)
     return result
+
+
+phase_template = {
+    "duration_secs": "NA",
+    "when_started_unixformat": "NA",
+    "when_ended_unixformat": "NA",
+}
 
 
 def parse_plot_log(lines):
     """lines is an array of lines read in from a chia plot log file with f.readlines()"""
     # phase data
-    p1 = {}
-    p2 = {}
-    p3 = {}
-    p4 = {}
+    p1 = phase_template.copy()
+    p2 = phase_template.copy()
+    p3 = phase_template.copy()
+    p4 = phase_template.copy()
 
     # other ways to find lines:
     phase_hits = filter(lambda line: re.search('phase', line), lines)
@@ -137,11 +122,14 @@ def parse_plot_log(lines):
 
     if p1_start_str:
         details = parse_starting_phase_line(p1_start_str)
-        p1['when_started'] = details['when']
+        p1['when_started'] = details['when_datetime_obj']
+        p1['when_started_unixformat'] = details['when_unixformat']
 
     if p1_end_str:
         details = parse_time_for_phase_line(p1_end_str)
-        p1['when_ended'] = details['when']
+        p1['when_ended'] = details['when_datetime_obj']
+        p1['when_ended_unixformat'] = details['when_unixformat']
+
         # NOTE: this could also be parsed out of the time for phase line
         dur = p1['when_ended'] - p1['when_started']
         # dur is a datetime.timedelta
@@ -149,11 +137,14 @@ def parse_plot_log(lines):
 
     if p2_start_str:
         details = parse_starting_phase_line(p2_start_str)
-        p2['when_started'] = details['when']
+        p2['when_started'] = details['when_datetime_obj']
+        p2['when_started_unixformat'] = details['when_unixformat']
 
     if p2_end_str:
         details = parse_time_for_phase_line(p2_end_str)
-        p2['when_ended'] = details['when']
+        p2['when_ended'] = details['when_datetime_obj']
+        p2['when_ended_unixformat'] = details['when_unixformat']
+
         # NOTE: this could also be parsed out of the time for phase line
         dur = p2['when_ended'] - p2['when_started']
         # dur is a datetime.timedelta
@@ -161,11 +152,16 @@ def parse_plot_log(lines):
 
     if p3_start_str:
         details = parse_starting_phase_line(p3_start_str)
-        p3['when_started'] = details['when']
+        p3['when_started'] = details['when_datetime_obj']
+        p3['when_started_unixformat'] = details['when_unixformat']
 
     if p3_end_str:
         details = parse_time_for_phase_line(p3_end_str)
-        p3['when_ended'] = details['when']
+
+        #pp(['p3 details', details])
+
+        p3['when_ended'] = details['when_datetime_obj']
+        p3['when_ended_unixformat'] = details['when_unixformat']
         # NOTE: this could also be parsed out of the time for phase line
         dur = p3['when_ended'] - p3['when_started']
         # dur is a datetime.timedelta
@@ -173,11 +169,13 @@ def parse_plot_log(lines):
 
     if p4_start_str:
         details = parse_starting_phase_line(p4_start_str)
-        p4['when_started'] = details['when']
+        p4['when_started'] = details['when_datetime_obj']
+        p4['when_started_unixformat'] = details['when_unixformat']
 
     if p4_end_str:
         details = parse_time_for_phase_line(p4_end_str)
-        p4['when_ended'] = details['when']
+        p4['when_ended'] = details['when_datetime_obj']
+        p4['when_ended_unixformat'] = details['when_unixformat']
         # NOTE: this could also be parsed out of the time for phase line
         dur = p4['when_ended'] - p4['when_started']
         # dur is a datetime.timedelta
@@ -207,7 +205,13 @@ def parse_plot_log(lines):
 
     result = {
         "plot_id": plot_id,
-        # "phase1": p1,
+        "phase1_started_unixformat": p1['when_started_unixformat'],
+        "phase1_duration_secs": p1['duration_secs'],
+        "phase2_duration_secs": p2['duration_secs'],
+        "phase3_duration_secs": p3['duration_secs'],
+        "phase4_duration_secs": p4['duration_secs'],
+        "phase4_ended_unixformat": p4['when_ended_unixformat'],
+        # keep it flat for now...
         # "phase2": p2,
         # "phase3": p3,
         # "phase4": p4,
@@ -218,6 +222,7 @@ def parse_plot_log(lines):
 
 
 def parse_plot_log_file(filename):
+    # pp(['parsing file', filename])
     f = open(filename, 'r')
     lines = f.readlines()
     result = parse_plot_log(lines)

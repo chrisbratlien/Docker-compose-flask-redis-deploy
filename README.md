@@ -39,7 +39,7 @@ optional arguments:
   -h, --help            show this help message and exit
   --flushall-before-ingest
                         flush Redis DB
-  --small-sample        only ingest 100 plots (debugging)
+  --small-sample        only ingest a few random plots (for debugging)
 ```
 
 ```
@@ -79,6 +79,8 @@ python ingest_plot_logs.py --flushall-before-ingest --small-sample
 [http://localhost:5000/api/plot_ids](http://localhost:5000/api/plot_ids)
 
 [http://localhost:5000/api/tractor_ids](http://localhost:5000/api/tractor_ids)
+
+[http://localhost:5000/api/plots_by_total_time](http://localhost:5000/api/plots_by_total_time)
 
 # MISC NOTES
 
