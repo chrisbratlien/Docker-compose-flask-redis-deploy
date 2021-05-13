@@ -24,6 +24,7 @@ parser.add_argument("--flushall-before-ingest",
 
 parser.add_argument("--small-sample",
                     help="only ingest a few random plot logs (for debugging)", action="store_true")
+parser.add_argument('path')
 
 
 args = parser.parse_args()
@@ -33,6 +34,9 @@ args = parser.parse_args()
 
 ctx = utils.AppContext()
 redis = ctx.redis
+
+# pp(['args', args])
+# quit()
 
 if args.flushall_before_ingest:
     print(bcolors.HEADER + bcolors.FAIL +
@@ -48,7 +52,6 @@ def ingest_plot_logs(opts):
 
     # example of a good payload:
     # {'entry': '9922.log', 'joined': '/logs/tractor23/lotus/logs/9922.log'}
-    basepath = '/logs'
 
     files = []
 
@@ -59,7 +62,7 @@ def ingest_plot_logs(opts):
         files.append(full_filename)
 
     # recurse and call the handler on each file found
-    utils.walker(basepath, only_plot_log_handler)
+    utils.walker(args.path, only_plot_log_handler)
 
     if args.small_sample:
         print(bcolors.WARNING + 'NOTE: using a small sample..(',
