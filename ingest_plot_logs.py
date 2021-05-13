@@ -10,8 +10,6 @@ from inspect import currentframe, getframeinfo
 
 from utils import bcolors
 
-import os
-
 frameinfo = getframeinfo(currentframe())
 
 pretty_printer = pprint.PrettyPrinter(indent=4)
@@ -26,6 +24,9 @@ parser.add_argument("--small-sample",
                     help="only ingest a few random plot logs (for debugging)", action="store_true")
 parser.add_argument('path')
 
+parser.add_argument("--verbose",
+                    help="show more feedback", action="store_true")
+
 
 args = parser.parse_args()
 # pp(args)
@@ -35,8 +36,8 @@ args = parser.parse_args()
 ctx = utils.AppContext()
 redis = ctx.redis
 
-# pp(['args', args])
-# quit()
+if args.verbose:
+    ctx.verbose = True
 
 if args.flushall_before_ingest:
     print(bcolors.HEADER + bcolors.FAIL +
@@ -65,8 +66,7 @@ def ingest_plot_logs(opts):
     utils.walker(args.path, only_plot_log_handler)
 
     if args.small_sample:
-        print(bcolors.WARNING + 'NOTE: using a small sample..(',
-              frameinfo.filename, ' at line', frameinfo.lineno, ')'
+        print(bcolors.WARNING + 'only ingesting a small sample.'
               + bcolors.ENDC)
         # grab a few files at random
         random.shuffle(files)
