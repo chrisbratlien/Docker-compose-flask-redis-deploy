@@ -66,11 +66,11 @@ already have it. skipping plot: 547bef5aa3ce9f5806bfe67849efc7a625949ea860261dc5
 already have it. skipping plot: 8fe98cac920e13e2af6e7ee5b132b9f7dc375d951c6bc26faf040bb349dadf6b
 ```
 
-# (optional) flush redis before ingest
+## (optional) flush redis before ingest
 
 python ingest_plot_logs.py --flushall-before-ingest
 
-## (optiosmall sample
+## (optional) small random sample
 
 python ingest_plot_logs.py --flushall-before-ingest --small-sample
 

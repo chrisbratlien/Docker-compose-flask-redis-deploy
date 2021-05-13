@@ -61,10 +61,10 @@ known_plot_ids = redis.smembers('set::plot_ids')
 #
 
 
-def ingest_one_file(payload):
+def ingest_one_file(full_filename):
     # print(payload)
-    if re.search(r'\d+.log', payload['entry']):
-        full_filename = payload['joined']
+    if re.search(r'\d+.log', full_filename):
+        #full_filename = payload['joined']
         parts = re.findall(r'\d+', full_filename)
         tractor = int(parts[0])
         PID = int(parts[1])
@@ -173,11 +173,11 @@ def ingest_plot_logs():
 
     files = []
 
-    def only_plot_log_handler(payload):
-        if not re.search(r'\d+.log', payload['entry']):
+    def only_plot_log_handler(full_filename):
+        if not re.search(r'\d+.log$', full_filename):
             # not a plot log, skip
             return False
-        files.append(payload)
+        files.append(full_filename)
 
     # recurse and call the handler on each file found
     utils.walker(basepath, only_plot_log_handler)

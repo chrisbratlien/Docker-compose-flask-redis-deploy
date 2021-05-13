@@ -79,7 +79,7 @@ def parse_plot_log(lines):
     p4 = phase_template.copy()
 
     # other ways to find lines:
-    phase_hits = filter(lambda line: re.search('phase', line), lines)
+    #phase_hits = filter(lambda line: re.search('phase', line), lines)
     # pp(['phase_hits', phase_hits])
     # phase1_begin = filter(lambda line: re.search(
     #    'Starting phase 1/4', line), lines)
@@ -203,6 +203,8 @@ def parse_plot_log(lines):
     # unsure whether to keep this nested or flat for redis.
     # as-is, phase1 (p1) through phase4 (p4) would make it structured
 
+    # we're going with flat, alex
+
     result = {
         "plot_id": plot_id,
         "phase1_started_unixformat": p1['when_started_unixformat'],
@@ -239,14 +241,9 @@ def walker(basepath, callback):
     """recursively walk basepath and trigger callback on all files found"""
     for entry in os.listdir(basepath):
         joined = os.path.join(basepath, entry)
+        #pp(['file entry', entry, 'joined', joined])
         if os.path.isfile(joined):
-            callback(
-                {
-                    "entry": entry,
-                    "joined": joined
-                }
-
-            )  # (pp(['file entry', entry, 'joined', joined])
+            callback(joined)
         if os.path.isdir(joined):
             # print('RECURSE')
             walker(joined, callback)
