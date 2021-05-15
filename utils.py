@@ -218,6 +218,10 @@ def parse_plot_log(lines):
         seconds = q.search(parts[0])
         copy_time = float(seconds.group())
 
+    grand_total_time = "NA"
+    if total_time != "NA" and copy_time != "NA":
+        grand_total_time = round(total_time + copy_time)
+
     # pp(['** >> p1', p1])
     # pp(['** >> p2', p2])
     # pp(['** >> p3', p3])
@@ -241,7 +245,8 @@ def parse_plot_log(lines):
         # "phase3": p3,
         # "phase4": p4,
         "total_time": total_time,
-        "copy_time": copy_time
+        "copy_time": copy_time,
+        "grand_total_time": grand_total_time
     }
     return result
 
@@ -368,17 +373,36 @@ def ingest_one_file(full_filename, ctx):
     # tmp_dict's key is the plot index, value is the score per redis-py zadd rules
     #
     # default to infinite copy_time to sort longer than any other copy time
+
+    plot_total_time = 0
+    plot_copy_time = 0
+    plot_grand_total_time = 0
+
     tmp_dict[plot_ingest_index] = '+inf'
     if meta['copy_time'] != 'NA':
-        tmp_dict[plot_ingest_index] = round(meta['copy_time'])
+        plot_copy_time = round(meta['copy_time'])
+        tmp_dict[plot_ingest_index] = plot_copy_time
 
-    redis.zadd('sorted_set::copy_time:', tmp_dict)
+    redis.zadd('sorted_set::plot:copy_time', tmp_dict)
 
     # TOTAL TIME
     tmp_dict = {}
     tmp_dict[plot_ingest_index] = '+inf'
     if meta['total_time'] != 'NA':
-        tmp_dict[plot_ingest_index] = round(meta['total_time'])
+        plot_total_time = round(meta['total_time'])
+        tmp_dict[plot_ingest_index] = plot_total_time
 
-    # not enough, need to distinguish plots from tractors
-    redis.zadd('sorted_set::total_time:', tmp_dict)
+    redis.zadd('sorted_set::plot:total_time', tmp_dict)
+
+    # GRAND TOTAL TIME
+    tmp_dict = {}
+    tmp_dict[plot_ingest_index] = '+inf'
+    if meta['grand_total_time'] != 'NA':
+        plot_grand_total_time = round(meta['grand_total_time'])
+        tmp_dict[plot_ingest_index] = plot_grand_total_time
+
+    redis.zadd('sorted_set::plot:grand_total_time', tmp_dict)
+
+    redis.incrby('tractor:' + str(tractor) + ':total_time', plot_total_time)
+    redis.incrby('tractor:' + str(tractor) +
+                 ':grand_total_time', plot_grand_total_time)
